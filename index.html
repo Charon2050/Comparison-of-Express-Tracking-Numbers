@@ -2,8 +2,8 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>快递单号识别</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ZXing 条码识别</title>
   <style>
     body {
       margin: 0;
@@ -47,11 +47,15 @@
     <textarea id="trackingNumbers" placeholder="请输入快递单号，每行一个"></textarea>
   </div>
 
-  <script src="https://unpkg.com/@ericblade/quagga2@1.2.6/dist/quagga.min.js"></script>
-  <script>
-    const video = document.getElementById('video');
-    const statusEl = document.getElementById('status');
-    const textarea = document.getElementById('trackingNumbers');
+  <script type="module">
+    import { BrowserMultiFormatReader, BarcodeFormat } from "https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/esm/index.min.js";
+
+    const video = document.getElementById("video");
+    const statusEl = document.getElementById("status");
+    const textarea = document.getElementById("trackingNumbers");
+
+    const codeReader = new BrowserMultiFormatReader();
+    const selectedFormats = [BarcodeFormat.CODE_128];
 
     function updateStatus(colorClass, text) {
       statusEl.className = '';
@@ -59,46 +63,21 @@
       statusEl.textContent = text;
     }
 
-    // 绑定摄像头视频到 <video>
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
       .then(stream => {
         video.srcObject = stream;
         video.play();
 
-        // 初始化 Quagga（不挂载 preview）
-        Quagga.init({
-          inputStream: {
-            type: "LiveStream",
-            constraints: {
-              facingMode: "environment"
-            },
-            area: { top: "0%", right: "0%", left: "0%", bottom: "0%" }
-          },
-          decoder: {
-            readers: ["code_128_reader"]
-          },
-          locate: true
-        }, err => {
-          if (err) {
-            console.error(err);
-            updateStatus("status-notfound", "识别模块初始化失败");
-            return;
-          }
-          Quagga.start();
-        });
+        const interval = setInterval(async () => {
+          try {
+            const result = await codeReader.decodeOnceFromVideoDevice(undefined, 'video', selectedFormats);
 
-        let lastDetected = "";
-        setInterval(() => {
-          Quagga.once("processed", result => {
-            if (!result || !result.codeResult || !result.codeResult.code) {
+            if (!result || !result.text) {
               updateStatus("status-unknown", "未识别到单号");
               return;
             }
 
-            const code = result.codeResult.code.trim();
-            if (code === lastDetected) return;
-            lastDetected = code;
-
+            const code = result.text.trim();
             const list = textarea.value
               .split('\n')
               .map(s => s.trim())
@@ -109,12 +88,14 @@
             } else {
               updateStatus("status-notfound", "单号不存在：" + code);
             }
-          });
+          } catch (err) {
+            updateStatus("status-unknown", "未识别到单号");
+          }
         }, 800);
       })
       .catch(err => {
-        console.error("摄像头无法访问：", err);
-        updateStatus("status-notfound", "摄像头无法访问");
+        console.error(err);
+        updateStatus("status-notfound", "摄像头访问失败");
       });
   </script>
 </body>
