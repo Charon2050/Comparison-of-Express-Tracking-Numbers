@@ -47,9 +47,9 @@
     <textarea id="trackingNumbers" placeholder="请输入快递单号，每行一个"></textarea>
   </div>
 
-  <!-- zxing-js/browser -->
-  <script type="module">
-    import { BrowserMultiFormatReader } from "https://cdn.jsdelivr.net/npm/@zxing/browser@0.0.10/+esm";
+  <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.0.10/umd/index.min.js"></script>
+  <script>
+    const { BrowserMultiFormatReader, NotFoundException } = ZXing;
 
     const video = document.getElementById("video");
     const statusEl = document.getElementById("status");
@@ -64,35 +64,29 @@
     const codeReader = new BrowserMultiFormatReader();
     let lastDetected = "";
 
-    try {
-      const devices = await codeReader.listVideoInputDevices();
-      const firstDeviceId = devices[0]?.deviceId;
-      await codeReader.decodeFromVideoDevice(firstDeviceId, video, (result, err) => {
-        if (result) {
-          const code = result.getText().trim();
-          if (code === lastDetected) return;
-          lastDetected = code;
+    codeReader.decodeFromVideoDevice(null, video, (result, err) => {
+      if (result) {
+        const code = result.getText().trim();
+        if (code === lastDetected) return;
+        lastDetected = code;
 
-          const list = textarea.value
-            .split('\n')
-            .map(s => s.trim())
-            .filter(s => s.length > 0);
+        const list = textarea.value
+          .split('\n')
+          .map(s => s.trim())
+          .filter(s => s.length > 0);
 
-          if (list.includes(code)) {
-            updateStatus("status-found", "单号存在：" + code);
-          } else {
-            updateStatus("status-notfound", "单号不存在：" + code);
-          }
-        } else if (err && !(err instanceof ZXing.NotFoundException)) {
-          console.error(err);
+        if (list.includes(code)) {
+          updateStatus("status-found", "单号存在：" + code);
         } else {
-          updateStatus("status-unknown", "未识别到单号");
+          updateStatus("status-notfound", "单号不存在：" + code);
         }
-      });
-    } catch (e) {
-      console.error("摄像头初始化失败：", e);
-      updateStatus("status-notfound", "摄像头访问失败");
-    }
+      } else if (err && !(err instanceof NotFoundException)) {
+        console.error(err);
+        updateStatus("status-notfound", "识别出错：" + err.message);
+      } else {
+        updateStatus("status-unknown", "未识别到单号");
+      }
+    });
   </script>
 </body>
 </html>
