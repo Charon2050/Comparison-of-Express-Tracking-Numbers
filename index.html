@@ -1,92 +1,109 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>快递单号识别</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>快递单号扫描</title>
   <style>
     body {
       margin: 0;
-      font-family: sans-serif;
       display: flex;
       flex-direction: column;
       height: 100vh;
-      background: #f0f0f0;
+      font-family: sans-serif;
     }
     video {
       width: 100%;
       height: 40vh;
       object-fit: cover;
-      background: black;
+      background: #000;
     }
     #status {
       text-align: center;
-      padding: 10px;
-      font-size: 18px;
+      padding: 1em;
+      font-weight: bold;
       color: white;
     }
-    #input-area {
-      flex: 1;
-      padding: 10px;
-    }
+    #status.gray { background: #666; }
+    #status.green { background: #4caf50; }
+    #status.red { background: #f44336; }
     textarea {
+      flex: 1;
       width: 100%;
-      height: 100%;
-      font-size: 16px;
+      font-size: 1em;
+      padding: 1em;
+      box-sizing: border-box;
+      border: none;
       resize: none;
     }
-    .status-unknown { background-color: #888; }
-    .status-found { background-color: #4caf50; }
-    .status-notfound { background-color: #f44336; }
   </style>
 </head>
 <body>
-  <video id="video" autoplay muted playsinline></video>
-  <div id="status" class="status-unknown">未识别到单号</div>
-  <div id="input-area">
-    <textarea id="trackingNumbers" placeholder="请输入快递单号，每行一个"></textarea>
-  </div>
+  <video id="preview" autoplay muted playsinline></video>
+  <div id="status" class="gray">等待摄像头...</div>
+  <textarea id="input" placeholder="请输入快递单号，每行一个"></textarea>
 
-  <script type="module"> import @zxing/library from https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/+esm </script>
-  <script>
-    const { BrowserMultiFormatReader, NotFoundException } = ZXing;
+  <script type="module">
+    import { BrowserMultiFormatReader, BarcodeFormat, DecodeHintType } from 'https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/+esm';
 
-    const video = document.getElementById("video");
-    const statusEl = document.getElementById("status");
-    const textarea = document.getElementById("trackingNumbers");
+    const video = document.getElementById('preview');
+    const status = document.getElementById('status');
+    const input = document.getElementById('input');
+    let lastMatch = '';
 
-    function updateStatus(className, text) {
-      statusEl.className = '';
-      statusEl.classList.add(className);
-      statusEl.textContent = text;
+    const hints = new Map();
+    hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.CODE_128]);
+    hints.set(DecodeHintType.TRY_HARDER, true); // 模糊识别
+
+    const codeReader = new BrowserMultiFormatReader(hints);
+
+    async function initCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        video.srcObject = stream;
+        status.textContent = '摄像头已启动';
+        status.className = 'gray';
+        scanLoop();
+      } catch (e) {
+        status.textContent = '摄像头初始化失败';
+        console.error(e);
+      }
     }
 
-    const codeReader = new BrowserMultiFormatReader();
-    let lastDetected = "";
+    function playBeep() {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      osc.frequency.value = 800;
+      osc.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.15);
+    }
 
-    codeReader.decodeFromVideoDevice(null, video, (result, err) => {
-      if (result) {
-        const code = result.getText().trim();
-        if (code === lastDetected) return;
-        lastDetected = code;
-
-        const list = textarea.value
-          .split('\n')
-          .map(s => s.trim())
-          .filter(s => s.length > 0);
-
-        if (list.includes(code)) {
-          updateStatus("status-found", "单号存在：" + code);
-        } else {
-          updateStatus("status-notfound", "单号不存在：" + code);
+    function scanLoop() {
+      setInterval(async () => {
+        try {
+          const result = await codeReader.decodeOnceFromVideoElement(video);
+          const code = result.text.trim();
+          const inputLines = input.value.split('\n').map(x => x.trim()).filter(Boolean);
+          if (inputLines.includes(code)) {
+            if (code !== lastMatch) {
+              playBeep();
+              lastMatch = code;
+            }
+            status.textContent = '单号存在';
+            status.className = 'green';
+          } else {
+            status.textContent = '单号不存在';
+            status.className = 'red';
+          }
+        } catch {
+          status.textContent = '未识别到单号';
+          status.className = 'gray';
         }
-      } else if (err && !(err instanceof NotFoundException)) {
-        console.error(err);
-        updateStatus("status-notfound", "识别出错：" + err.message);
-      } else {
-        updateStatus("status-unknown", "未识别到单号");
-      }
-    });
+      }, 500);
+    }
+
+    initCamera();
   </script>
 </body>
 </html>
