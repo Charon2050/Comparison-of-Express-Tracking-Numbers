@@ -2,8 +2,8 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ZXing 条码识别</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>快递单号识别</title>
   <style>
     body {
       margin: 0;
@@ -47,56 +47,52 @@
     <textarea id="trackingNumbers" placeholder="请输入快递单号，每行一个"></textarea>
   </div>
 
+  <!-- zxing-js/browser -->
   <script type="module">
-    import { BrowserMultiFormatReader, BarcodeFormat } from "https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/esm/index.min.js";
+    import { BrowserMultiFormatReader } from "https://cdn.jsdelivr.net/npm/@zxing/browser@0.0.10/+esm";
 
     const video = document.getElementById("video");
     const statusEl = document.getElementById("status");
     const textarea = document.getElementById("trackingNumbers");
 
-    const codeReader = new BrowserMultiFormatReader();
-    const selectedFormats = [BarcodeFormat.CODE_128];
-
-    function updateStatus(colorClass, text) {
+    function updateStatus(className, text) {
       statusEl.className = '';
-      statusEl.classList.add(colorClass);
+      statusEl.classList.add(className);
       statusEl.textContent = text;
     }
 
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-      .then(stream => {
-        video.srcObject = stream;
-        video.play();
+    const codeReader = new BrowserMultiFormatReader();
+    let lastDetected = "";
 
-        const interval = setInterval(async () => {
-          try {
-            const result = await codeReader.decodeOnceFromVideoDevice(undefined, 'video', selectedFormats);
+    try {
+      const devices = await codeReader.listVideoInputDevices();
+      const firstDeviceId = devices[0]?.deviceId;
+      await codeReader.decodeFromVideoDevice(firstDeviceId, video, (result, err) => {
+        if (result) {
+          const code = result.getText().trim();
+          if (code === lastDetected) return;
+          lastDetected = code;
 
-            if (!result || !result.text) {
-              updateStatus("status-unknown", "未识别到单号");
-              return;
-            }
+          const list = textarea.value
+            .split('\n')
+            .map(s => s.trim())
+            .filter(s => s.length > 0);
 
-            const code = result.text.trim();
-            const list = textarea.value
-              .split('\n')
-              .map(s => s.trim())
-              .filter(s => s.length > 0);
-
-            if (list.includes(code)) {
-              updateStatus("status-found", "单号存在：" + code);
-            } else {
-              updateStatus("status-notfound", "单号不存在：" + code);
-            }
-          } catch (err) {
-            updateStatus("status-unknown", "未识别到单号");
+          if (list.includes(code)) {
+            updateStatus("status-found", "单号存在：" + code);
+          } else {
+            updateStatus("status-notfound", "单号不存在：" + code);
           }
-        }, 800);
-      })
-      .catch(err => {
-        console.error(err);
-        updateStatus("status-notfound", "摄像头访问失败");
+        } else if (err && !(err instanceof ZXing.NotFoundException)) {
+          console.error(err);
+        } else {
+          updateStatus("status-unknown", "未识别到单号");
+        }
       });
+    } catch (e) {
+      console.error("摄像头初始化失败：", e);
+      updateStatus("status-notfound", "摄像头访问失败");
+    }
   </script>
 </body>
 </html>
